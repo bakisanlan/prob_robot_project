@@ -39,9 +39,9 @@ function x_next = sampleOdometryMotionModel(x, u, alpha)
 
     %% 2) Add noise according to Thrun's model
     % variance terms (standard textbook form)
-    var_rot1  = alpha(1)*delta_rot1 + alpha(2)*delta_trans;
-    var_trans = alpha(3)*delta_trans + alpha(4)*(delta_rot1 + delta_rot2);
-    var_rot2  = alpha(1)*delta_rot2 + alpha(2)*delta_trans;
+    var_rot1  = alpha(1)*abs(delta_rot1) + alpha(2)*abs(delta_trans);
+    var_trans = alpha(3)*abs(delta_trans) + alpha(4)*abs(delta_rot1 + delta_rot2);
+    var_rot2  = alpha(1)*abs(delta_rot2) + alpha(2)*abs(delta_trans);
 
     std_rot1  = sqrt(var_rot1 + eps);
     std_trans = sqrt(var_trans + eps);
