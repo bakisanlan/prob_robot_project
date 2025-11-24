@@ -113,7 +113,7 @@ function robotMotionModelGUI()
               'FontSize', 10, 'FontWeight', 'bold');
     
     popupTrajectory = uicontrol('Style', 'popupmenu', ...
-                                'String', {'Circular', 'Rectangle'}, ...
+                                'String', {'Circular', 'Rectangle', 'Rectangle with Obstacles'}, ...
                                 'Position', [panelX, figHeight*0.684, panelWidth*0.7, figHeight*0.036], ...
                                 'Value', 1);
     
@@ -288,6 +288,7 @@ function robotMotionModelGUI()
     simState.alpha = [];
     simState.isDeadReckoning = true;
     simState.trajectoryType = 1;
+    simState.occMap = [];  % Add occupancy map to state
     
     % Initialize with MODEL panel visible
     currentPanel = 'MODEL';
@@ -412,8 +413,16 @@ function robotMotionModelGUI()
         switch trajectoryType
             case 1  % Circular trajectory
                 [X_gt, U_list, x0, dt] = generateCircularTrajectory();
+                simState.occMap = [];  % No obstacles
             case 2  % Rectangle trajectory
                 [X_gt, U_list, x0, dt] = generateRectangleTrajectory();
+                simState.occMap = [];  % No obstacles
+            case 3  % Rectangle with obstacles
+                [X_gt, U_list, x0, dt, occMap] = generateRectangleObstacleTrajectory();
+                simState.occMap = occMap;
+                % Visualize occupancy map
+                show(occMap, 'Parent', ax);
+                hold(ax, 'on');
             otherwise
                 errordlg('Unknown trajectory type');
                 set(btnRunModel, 'Enable', 'on');
@@ -478,7 +487,7 @@ function robotMotionModelGUI()
             % Plot initial ground truth point only
             plot(ax, X_gt(1,1), X_gt(2,1), 'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
             
-            trajectoryNames = {'Circular', 'Rectangle'};
+            trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
             title(ax, sprintf('%s Model - %s Trajectory - Live Simulation', ...
                              modelName, trajectoryNames{trajectoryType}));
             legend(ax, 'Location', 'best');
@@ -494,7 +503,7 @@ function robotMotionModelGUI()
                 for i = 1:size_U
                     for sample = 1:numSamples
                         simState.X_samples(:, sample, i+1) = sampleDeadReckoningMotionModel(...
-                            simState.X_samples(:, sample, i), U_list(:, i), alpha, dt);
+                            simState.X_samples(:, sample, i), U_list(:, i), alpha, dt, simState.occMap);
                     end
                 end
             else
@@ -502,7 +511,7 @@ function robotMotionModelGUI()
                 for i = 1:size_U
                     for sample = 1:numSamples
                         simState.X_samples(:, sample, i+1) = sampleOdometryMotionModel(...
-                            simState.X_samples(:, sample, i), simState.U_odom(:, i), alpha);
+                            simState.X_samples(:, sample, i), simState.U_odom(:, i), alpha, simState.occMap);
                     end
                 end
             end
@@ -513,10 +522,10 @@ function robotMotionModelGUI()
             ypos = simState.X_samples(2, :, :);
             ypos = ypos(:, :);
             
-            plot(ax, xpos, ypos, 'k.', 'MarkerSize', 2, 'DisplayName', 'Samples');
+            plot(ax, xpos, ypos, 'r.', 'MarkerSize', 2, 'DisplayName', 'Samples');
             plot(ax, X_gt(1,:), X_gt(2,:), 'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
             
-            trajectoryNames = {'Circular', 'Rectangle'};
+            trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
             title(ax, sprintf('%s Model - %s Trajectory - %d Samples', ...
                              modelName, trajectoryNames{trajectoryType}, numSamples));
             legend(ax, 'Location', 'best');
@@ -562,17 +571,23 @@ function robotMotionModelGUI()
                 % Propagate samples for this time step
                 if simState.isDeadReckoning
                     for sample = 1:simState.numSamples
-                        simState.X_samples(:, sample, step+1) = sampleDeadReckoningMotionModel(...
+                        x_new = sampleDeadReckoningMotionModel(...
                             simState.X_samples(:, sample, step), ...
                             simState.U_list(:, step), ...
-                            simState.alpha, simState.dt);
+                            simState.alpha, simState.dt, simState.occMap);
+                        
+                        % Store result (NaN if collision, valid pose otherwise)
+                        simState.X_samples(:, sample, step+1) = x_new;
                     end
                 else
                     for sample = 1:simState.numSamples
-                        simState.X_samples(:, sample, step+1) = sampleOdometryMotionModel(...
+                        x_new = sampleOdometryMotionModel(...
                             simState.X_samples(:, sample, step), ...
                             simState.U_odom(:, step), ...
-                            simState.alpha);
+                            simState.alpha, simState.occMap);
+                        
+                        % Store result (NaN if collision, valid pose otherwise)
+                        simState.X_samples(:, sample, step+1) = x_new;
                     end
                 end
                 
@@ -582,23 +597,29 @@ function robotMotionModelGUI()
                 ypos = simState.X_samples(2, :, 1:(step+1));
                 ypos = ypos(:, :);
                 
-                % Clear only sample points and previous ground truth markers (keep initial GT point)
+                % Clear only sample points and previous ground truth markers
+                % Keep occupancy map (Image object) and legend
                 children = get(ax, 'Children');
                 for i = 1:length(children)
-                    markerType = get(children(i), 'Marker');
-                    if strcmp(markerType, '.') || strcmp(markerType, 'o') 
-                        delete(children(i));
+                    childType = class(children(i));
+                    % Only delete Line objects (samples and ground truth markers)
+                    % Skip Image objects (occupancy map) and other objects
+                    if strcmp(childType, 'matlab.graphics.chart.primitive.Line')
+                        markerType = get(children(i), 'Marker');
+                        if strcmp(markerType, '.') || strcmp(markerType, 'o') 
+                            delete(children(i));
+                        end
                     end
                 end
                 
                 % Plot samples
-                plot(ax, xpos, ypos, 'k.', 'MarkerSize', 2, 'DisplayName', 'Samples');
+                plot(ax, xpos, ypos, 'r.', 'MarkerSize', 2, 'DisplayName', 'Samples');
                 
                 % Plot ground truth up to current step
                 plot(ax, simState.X_gt(1, 1:(step+1)), simState.X_gt(2, 1:(step+1)), ...
                      'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
                 
-                trajectoryNames = {'Circular', 'Rectangle'};
+                trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
                 modelName = 'Odometry';
                 if simState.isDeadReckoning
                     modelName = 'Dead Reckoning';
@@ -620,7 +641,7 @@ function robotMotionModelGUI()
         set(btnContinueModel, 'Enable', 'off');
         
         % Update title
-        trajectoryNames = {'Circular', 'Rectangle'};
+        trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
         modelName = 'Odometry';
         if simState.isDeadReckoning
             modelName = 'Dead Reckoning';
@@ -671,10 +692,16 @@ function robotMotionModelGUI()
         cla(ax);
         hold(ax, 'on');
         
+        % Redraw occupancy map if present
+        if ~isempty(simState.occMap)
+            show(simState.occMap, 'Parent', ax);
+            hold(ax, 'on');
+        end
+        
         % Plot only initial ground truth point
         plot(ax, simState.X_gt(1,1), simState.X_gt(2,1), 'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
         
-        trajectoryNames = {'Circular', 'Rectangle'};
+        trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
         modelName = 'Odometry';
         if simState.isDeadReckoning
             modelName = 'Dead Reckoning';
@@ -773,6 +800,15 @@ function robotMotionModelGUI()
         end
         
         % Note: dt is returned as the last dt value (1.0)
+    end
+    
+    function [X_gt, U_list, x0, dt, occMap] = generateRectangleObstacleTrajectory()
+        % Generate rectangle trajectory with obstacles
+        [X_gt, U_list, x0, dt] = generateRectangleTrajectory();
+        
+        % Create occupancy map
+        occMap = createOccupancyMapWithObstacles();
+
     end
 
 end

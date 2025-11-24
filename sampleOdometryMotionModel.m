@@ -1,7 +1,8 @@
-function x_next = sampleOdometryMotionModel(x, u, alpha)
+function x_next = sampleOdometryMotionModel(x, u, alpha, varargin)
 %SAMPLEMOTIONMODOLOGY  Odometry-based motion model (sampling version)
 %
 %   x_next = sampleMotionModelOdometry(x, u, alpha)
+%   x_next = sampleMotionModelOdometry(x, u, alpha, occMap)
 %
 %   Inputs
 %   ------
@@ -10,10 +11,11 @@ function x_next = sampleOdometryMotionModel(x, u, alpha)
 %           u = [x_bar; y_bar; theta_bar; x_bar_p; y_bar_p; theta_bar_p]
 %             (pose at time t-1 and pose at time t in odometry frame)
 %   alpha : [4×1] noise parameters α1…α4
+%   occMap: (optional) occupancyMap object for collision checking
 %
 %   Output
 %   ------
-%   x_next : [3×1] sampled new pose [x'; y'; theta']
+%   x_next : [3×1] sampled new pose [x'; y'; theta'], or [NaN; NaN; NaN] if in collision
 
     % unpack robot pose
     xr  = x(1);  %r stansts for robot which current pose
@@ -60,8 +62,18 @@ function x_next = sampleOdometryMotionModel(x, u, alpha)
     thr_p = wrapToPi(thr_p);
 
     x_next = [xr_p; yr_p; thr_p];
+    
+    %% 4) Check collision with occupancy map (if provided)
+    if ~isempty(varargin) && ~isempty(varargin{1})
+        occMap = varargin{1};
+        % Check if the new position is in occupied space
+        if checkOccupancy(occMap, [xr_p, yr_p])
+            % Position is occupied, return NaN to indicate invalid sample (will not be plotted)
+            x_next = [NaN; NaN; NaN];
+            return;
+        end
+    end
 end
-
 
 %% Sample use
 % x = [0; 0; 0];   % world pose
@@ -69,4 +81,5 @@ end
 % alpha = [0.1 0.1 0.1 0.1]';  % tune as needed
 % 
 % x1 = sampleOdometryMotionModel(x, u, alpha);
+% x2 = sampleOdometryMotionModel(x, u, alpha, occMap);
 

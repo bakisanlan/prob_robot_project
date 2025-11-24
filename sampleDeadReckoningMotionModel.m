@@ -1,14 +1,16 @@
-function x_next = sampleDeadReckoningMotionModel(x, u, alpha, dt)
+function x_next = sampleDeadReckoningMotionModel(x, u, alpha, dt, varargin)
 %SAMPLEMOTIONMODELVELOCITY  Thrun-style velocity motion model (6 alphas)
 %
 %   x_next = sampleMotionModelVelocity(x, u, alpha, dt)
+%   x_next = sampleMotionModelVelocity(x, u, alpha, dt, occMap)
 %
 %   x      : [3×1] current pose [x; y; theta]
 %   u      : [2×1] control [v; w]  (translational & rotational velocity)
 %   alpha  : [6×1] noise parameters (α1…α6)
 %   dt     : scalar time step
+%   occMap : (optional) occupancyMap object for collision checking
 %
-%   x_next : [3×1] new pose [x'; y'; theta']
+%   x_next : [3×1] new pose [x'; y'; theta'], or [NaN; NaN; NaN] if in collision
 
     % unpack state and control
     px    = x(1);
@@ -50,6 +52,17 @@ function x_next = sampleDeadReckoningMotionModel(x, u, alpha, dt)
     th_p = wrapToPi(th_p);
 
     x_next = [px_p; py_p; th_p];
+    
+    %% Check collision with occupancy map (if provided)
+    if ~isempty(varargin) && ~isempty(varargin{1})
+        occMap = varargin{1};
+        % Check if the new position is in occupied space
+        if checkOccupancy(occMap, [px_p, py_p])
+            % Position is occupied, return NaN to indicate invalid sample (will not be plotted)
+            x_next = [NaN; NaN; NaN];
+            return;
+        end
+    end
 end
 
 
@@ -60,4 +73,5 @@ end
 % alpha = [0.1 0.1 0.1 0.1 0.01 0.01]';   % tune these
 % 
 % x1 = sampleDeadReckoningMotionModel(x, u, alpha, dt);
+% x2 = sampleDeadReckoningMotionModel(x, u, alpha, dt, occMap);
 
