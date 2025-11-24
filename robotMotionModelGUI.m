@@ -28,7 +28,9 @@ function robotMotionModelGUI()
                  'NumberTitle', 'off', ...
                  'Units', 'pixels', ...
                  'Position', [figX, figY, figWidth, figHeight], ...
-                 'Resize', 'off');
+                 'Resize', 'on', ...
+                 'WindowState', 'maximized', ...
+                 'SizeChangedFcn', @resizeCallback);
     
     % Calculate relative dimensions (based on 1200x700 reference)
     plotWidth = figWidth * 0.667;   % 800/1200 = 66.7%
@@ -150,17 +152,20 @@ function robotMotionModelGUI()
         sliderLabels.(sprintf('alpha%d', i)) = uicontrol('Style', 'text', ...
             'String', sprintf('α%d:', i), ...
             'Position', [panelX, yPos, panelWidth*0.12, sliderHeight], ...
-            'HorizontalAlignment', 'left');
+            'HorizontalAlignment', 'left', ...
+            'Tag', sprintf('sliderLabel%d', i));  % Add tag for identification
         
         sliders.(sprintf('alpha%d', i)) = uicontrol('Style', 'slider', ...
             'Min', 0, 'Max', 0.01, 'Value', 0.001, ...
             'Position', [panelX+panelWidth*0.14, yPos, panelWidth*0.64, sliderHeight], ...
-            'Callback', {@sliderCallback, i});
+            'Callback', {@sliderCallback, i}, ...
+            'Tag', sprintf('slider%d', i));  % Add tag for identification
         
         sliderValues.(sprintf('alpha%d', i)) = uicontrol('Style', 'text', ...
             'String', '0.001', ...
             'Position', [panelX+panelWidth*0.79, yPos, panelWidth*0.18, sliderHeight], ...
-            'HorizontalAlignment', 'left');
+            'HorizontalAlignment', 'left', ...
+            'Tag', sprintf('sliderValue%d', i));  % Add tag for identification
     end
     
     % Live simulation checkbox
@@ -303,6 +308,212 @@ function robotMotionModelGUI()
     % Initialize with MODEL panel visible
     currentPanel = 'MODEL';
     updateSliderVisibility();
+    
+    %% Resize Callback Function
+    
+    function resizeCallback(src, ~)
+        % Check if figure still exists and is valid
+        if ~isvalid(src)
+            return;
+        end
+        
+        % Try-catch to prevent errors during resize
+        try
+            % Get new figure size
+            figPos = get(src, 'Position');
+            newWidth = figPos(3);
+            newHeight = figPos(4);
+            
+            % Recalculate dimensions based on new size
+            newPlotWidth = newWidth * 0.667;
+            newPlotHeight = newHeight * 0.857;
+            newPlotX = newWidth * 0.042;
+            newPlotY = newHeight * 0.071;
+            
+            newPanelX = newWidth * 0.75;
+            newPanelWidth = newWidth * 0.233;
+            
+            % Find and update axes position
+            axHandle = findobj(src, 'Type', 'axes');
+            if ~isempty(axHandle)
+                set(axHandle(1), 'Position', [newPlotX, newPlotY, newPlotWidth, newPlotHeight]);
+            end
+            
+            % Update panel selection buttons
+            newBtnWidth = newPanelWidth / 3 - 5;
+            newBtnHeight = figHeight * 0.05;
+            newBtnY = newHeight * 0.929;
+            
+            % Find and update panel buttons
+            btnModel = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'MODEL');
+            btnSensors = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'SENSORS');
+            btnGNC = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'GNC');
+            
+            if ~isempty(btnModel)
+                set(btnModel, 'Position', [newPanelX, newBtnY, newBtnWidth, newBtnHeight]);
+            end
+            if ~isempty(btnSensors)
+                set(btnSensors, 'Position', [newPanelX+newBtnWidth+5, newBtnY, newBtnWidth, newBtnHeight]);
+            end
+            if ~isempty(btnGNC)
+                set(btnGNC, 'Position', [newPanelX+2*newBtnWidth+10, newBtnY, newBtnWidth, newBtnHeight]);
+            end
+            
+            % Update separator line
+            separatorHandle = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', '');
+            if ~isempty(separatorHandle) && length(separatorHandle) >= 1
+                set(separatorHandle(1), 'Position', [newPanelX, newBtnY-5, newPanelWidth, 2]);
+            end
+            
+            % Update MODEL panel components
+            txtModelLabel = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Motion Model:');
+            if ~isempty(txtModelLabel)
+                set(txtModelLabel, 'Position', [newPanelX, newHeight*0.857, newPanelWidth*0.6, newHeight*0.036]);
+            end
+            
+            btnDR = findobj(src, 'Type', 'uicontrol', 'Style', 'radiobutton', 'String', 'Dead Reckoning');
+            if ~isempty(btnDR)
+                set(btnDR, 'Position', [newPanelX, newHeight*0.814, newPanelWidth*0.5, newHeight*0.036]);
+            end
+            
+            btnOdom = findobj(src, 'Type', 'uicontrol', 'Style', 'radiobutton', 'String', 'Odometry');
+            if ~isempty(btnOdom)
+                set(btnOdom, 'Position', [newPanelX, newHeight*0.771, newPanelWidth*0.5, newHeight*0.036]);
+            end
+            
+            txtTrajLabel = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Trajectory Type:');
+            if ~isempty(txtTrajLabel)
+                set(txtTrajLabel, 'Position', [newPanelX, newHeight*0.72, newPanelWidth*0.6, newHeight*0.036]);
+            end
+            
+            popupTraj = findobj(src, 'Type', 'uicontrol', 'Style', 'popupmenu');
+            if ~isempty(popupTraj)
+                set(popupTraj(1), 'Position', [newPanelX, newHeight*0.684, newPanelWidth*0.7, newHeight*0.036]);
+            end
+            
+            txtSamplesLabel = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Number of Samples:');
+            if ~isempty(txtSamplesLabel)
+                set(txtSamplesLabel, 'Position', [newPanelX, newHeight*0.63, newPanelWidth*0.6, newHeight*0.036]);
+            end
+            
+            editSamp = findobj(src, 'Type', 'uicontrol', 'Style', 'edit');
+            for i = 1:length(editSamp)
+                str = get(editSamp(i), 'String');
+                numVal = str2double(str);
+                if ~isnan(numVal) && numVal > 10  % Likely the samples field
+                    set(editSamp(i), 'Position', [newPanelX, newHeight*0.594, newPanelWidth*0.4, newHeight*0.036]);
+                    break;
+                end
+            end
+            
+            txtAlphaLabel = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Alpha Parameters:');
+            if ~isempty(txtAlphaLabel)
+                set(txtAlphaLabel, 'Position', [newPanelX, newHeight*0.53, newPanelWidth*0.6, newHeight*0.036]);
+            end
+            
+            % Update sliders using Tags for reliable identification
+            newSliderSpacing = newHeight * 0.046;
+            newSliderHeight = newHeight * 0.029;
+            
+            % Update each slider, label, and value by index (1-6)
+            for i = 1:6
+                yPos = newHeight*0.5 - (i-1)*newSliderSpacing;
+                
+                % Find components by their unique tags
+                sliderLabel = findobj(src, 'Tag', sprintf('sliderLabel%d', i));
+                slider = findobj(src, 'Tag', sprintf('slider%d', i));
+                sliderValue = findobj(src, 'Tag', sprintf('sliderValue%d', i));
+                
+                % Update positions
+                if ~isempty(sliderLabel)
+                    set(sliderLabel, 'Position', [newPanelX, yPos, newPanelWidth*0.12, newSliderHeight]);
+                end
+                
+                if ~isempty(slider)
+                    set(slider, 'Position', [newPanelX+newPanelWidth*0.14, yPos, newPanelWidth*0.64, newSliderHeight]);
+                end
+                
+                if ~isempty(sliderValue)
+                    set(sliderValue, 'Position', [newPanelX+newPanelWidth*0.79, yPos, newPanelWidth*0.18, newSliderHeight]);
+                end
+            end
+            
+            % Update live simulation controls
+            chkLive = findobj(src, 'Type', 'uicontrol', 'Style', 'checkbox', 'String', 'Live Simulation');
+            if ~isempty(chkLive)
+                set(chkLive, 'Position', [newPanelX, newHeight*0.15, newPanelWidth*0.5, newHeight*0.036]);
+            end
+            
+            txtPace = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Pace (s):');
+            if ~isempty(txtPace)
+                set(txtPace, 'Position', [newPanelX, newHeight*0.11, newPanelWidth*0.3, newHeight*0.03]);
+            end
+            
+            % Update pace edit field
+            editPaceFields = findobj(src, 'Type', 'uicontrol', 'Style', 'edit');
+            for i = 1:length(editPaceFields)
+                str = get(editPaceFields(i), 'String');
+                numVal = str2double(str);
+                if ~isnan(numVal) && numVal >= 0 && numVal < 10  % Likely the pace field (0.1)
+                    set(editPaceFields(i), 'Position', [newPanelX+newPanelWidth*0.32, newHeight*0.11, newPanelWidth*0.25, newHeight*0.03]);
+                    break;
+                end
+            end
+            
+            % Update simulation control buttons
+            btnRun = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'Run');
+            if ~isempty(btnRun)
+                set(btnRun, 'Position', [newPanelX, newHeight*0.06, newPanelWidth*0.22, newHeight*0.045]);
+            end
+            
+            btnStop = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'Stop');
+            if ~isempty(btnStop)
+                set(btnStop, 'Position', [newPanelX+newPanelWidth*0.25, newHeight*0.06, newPanelWidth*0.22, newHeight*0.045]);
+            end
+            
+            btnCont = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'Continue');
+            if ~isempty(btnCont)
+                set(btnCont, 'Position', [newPanelX+newPanelWidth*0.5, newHeight*0.06, newPanelWidth*0.22, newHeight*0.045]);
+            end
+            
+            btnReset = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'Reset');
+            if ~isempty(btnReset)
+                set(btnReset, 'Position', [newPanelX+newPanelWidth*0.75, newHeight*0.06, newPanelWidth*0.22, newHeight*0.045]);
+            end
+            
+            % Update save button
+            btnSave = findobj(src, 'Type', 'uicontrol', 'Style', 'pushbutton', 'String', 'Save Results');
+            if ~isempty(btnSave)
+                set(btnSave, 'Position', [newPanelX, newHeight*0.01, newPanelWidth*0.5, newHeight*0.04]);
+            end
+            
+            % Update SENSORS panel components
+            txtSensorsTitle = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Sensors Panel');
+            if ~isempty(txtSensorsTitle)
+                set(txtSensorsTitle, 'Position', [newPanelX, newHeight*0.857, newPanelWidth*0.75, newHeight*0.043]);
+            end
+            
+            txtSensorsPlaceholder = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Sensor configuration controls will be added here...');
+            if ~isempty(txtSensorsPlaceholder)
+                set(txtSensorsPlaceholder, 'Position', [newPanelX, newHeight*0.429, newPanelWidth, newHeight*0.071]);
+            end
+            
+            % Update GNC panel components
+            txtGNCTitle = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'GNC Panel');
+            if ~isempty(txtGNCTitle)
+                set(txtGNCTitle, 'Position', [newPanelX, newHeight*0.857, newPanelWidth*0.75, newHeight*0.043]);
+            end
+            
+            txtGNCPlaceholder = findobj(src, 'Type', 'uicontrol', 'Style', 'text', 'String', 'Guidance, Navigation, and Control options will be added here...');
+            if ~isempty(txtGNCPlaceholder)
+                set(txtGNCPlaceholder, 'Position', [newPanelX, newHeight*0.429, newPanelWidth, newHeight*0.071]);
+            end
+            
+        catch ME
+            % Silently catch errors during resize to prevent disruption
+            % Optionally log the error: disp(ME.message);
+        end
+    end
     
     %% Callback Functions
     
