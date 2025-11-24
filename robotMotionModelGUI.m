@@ -666,6 +666,75 @@ function robotMotionModelGUI()
                          modelName, trajectoryNames{simState.trajectoryType}, simState.numSamples));
     end
     
+    function stopSimulation(~, ~)
+        % Stop the live simulation
+        simState.isRunning = false;
+        simState.isPaused = true;
+        set(btnStopModel, 'Enable', 'off');
+        set(btnContinueModel, 'Enable', 'on');
+        set(btnResetModel, 'Enable', 'on');
+        set(btnRunModel, 'Enable', 'off');
+    end
+    
+    function continueSimulation(~, ~)
+        % Continue from where it stopped
+        simState.isRunning = true;
+        simState.isPaused = false;
+        set(btnStopModel, 'Enable', 'on');
+        set(btnContinueModel, 'Enable', 'off');
+        set(btnResetModel, 'Enable', 'off');
+        set(btnRunModel, 'Enable', 'off');
+        
+        runLiveSimulation();
+    end
+    
+    function resetSimulation(~, ~)
+        % Reset simulation to initial state
+        simState.isRunning = false;
+        simState.isPaused = false;
+        simState.isFinished = false;
+        simState.currentStep = 0;
+        
+        % Reset sample array to initial positions
+        if simState.isDeadReckoning
+            size_U = size(simState.U_list, 2);
+            simState.X_samples = repmat(simState.x0, 1, simState.numSamples, size_U+1);
+        else
+            size_U = size(simState.U_odom, 2);
+            simState.X_samples = repmat(simState.x0, 1, simState.numSamples, size_U+1);
+        end
+        
+        % Clear and reset plot
+        cla(ax);
+        hold(ax, 'on');
+        
+        % Redraw occupancy map if present
+        if ~isempty(simState.occMap)
+            show(simState.occMap, 'Parent', ax);
+            hold(ax, 'on');
+        end
+        
+        % Plot only initial ground truth point
+        plot(ax, simState.X_gt(1,1), simState.X_gt(2,1), 'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
+        
+        trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
+        modelName = 'Odometry';
+        if simState.isDeadReckoning
+            modelName = 'Dead Reckoning';
+        end
+        title(ax, sprintf('%s Model - %s Trajectory - Reset', ...
+                         modelName, trajectoryNames{simState.trajectoryType}));
+        legend(ax, 'Location', 'best');
+        grid(ax, 'on');
+        axis(ax, 'equal');
+        
+        % Update button states
+        set(btnRunModel, 'Enable', 'on');
+        set(btnStopModel, 'Enable', 'off');
+        set(btnContinueModel, 'Enable', 'off');
+        set(btnResetModel, 'Enable', 'off');
+    end
+    
     function saveResults(~, ~)
         % Save current simulation results to files
         
