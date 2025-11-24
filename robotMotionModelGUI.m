@@ -225,6 +225,16 @@ function robotMotionModelGUI()
                        'Visible', 'off', ...
                        'Callback', @resetSimulation);
     
+    % Save button
+    btnSaveResults = uicontrol('Style', 'pushbutton', ...
+                       'String', 'Save Results', ...
+                       'Position', [panelX, figHeight*0.01, panelWidth*0.5, figHeight*0.04], ...
+                       'FontSize', 10, ...
+                       'FontWeight', 'bold', ...
+                       'BackgroundColor', [0.3, 0.8, 0.8], ...
+                       'Enable', 'off', ...
+                       'Callback', @saveResults);
+    
     % Store all MODEL panel components (properly flatten cell arrays)
     sliderLabelsList = struct2cell(sliderLabels);
     slidersList = struct2cell(sliders);
@@ -234,7 +244,7 @@ function robotMotionModelGUI()
                             txtTrajectoryLabel, popupTrajectory, ...
                             txtSamplesLabel, editSamples, txtAlphaLabel, ...
                             chkLiveSimulation, txtPaceLabel, editPace, ...
-                            btnRunModel, btnStopModel, btnContinueModel, btnResetModel, ...
+                            btnRunModel, btnStopModel, btnContinueModel, btnResetModel, btnSaveResults, ...
                             sliderLabelsList{:}, slidersList{:}, sliderValuesList{:}];
     
     %% SENSORS PANEL COMPONENTS
@@ -534,6 +544,9 @@ function robotMotionModelGUI()
             
             % Re-enable run button
             set(btnRunModel, 'Enable', 'on');
+            
+            % Enable save button after successful simulation
+            set(btnSaveResults, 'Enable', 'on');
         end
     end
     
@@ -640,6 +653,9 @@ function robotMotionModelGUI()
         set(btnStopModel, 'Enable', 'off');
         set(btnContinueModel, 'Enable', 'off');
         
+        % Enable save button after completing live simulation
+        set(btnSaveResults, 'Enable', 'on');
+        
         % Update title
         trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
         modelName = 'Odometry';
@@ -650,73 +666,192 @@ function robotMotionModelGUI()
                          modelName, trajectoryNames{simState.trajectoryType}, simState.numSamples));
     end
     
-    function stopSimulation(~, ~)
-        % Stop the live simulation
-        simState.isRunning = false;
-        simState.isPaused = true;
-        set(btnStopModel, 'Enable', 'off');
-        set(btnContinueModel, 'Enable', 'on');
-        set(btnResetModel, 'Enable', 'on');
-        set(btnRunModel, 'Enable', 'off');
-    end
-    
-    function continueSimulation(~, ~)
-        % Continue from where it stopped
-        simState.isRunning = true;
-        simState.isPaused = false;
-        set(btnStopModel, 'Enable', 'on');
-        set(btnContinueModel, 'Enable', 'off');
-        set(btnResetModel, 'Enable', 'off');
-        set(btnRunModel, 'Enable', 'off');
+    function saveResults(~, ~)
+        % Save current simulation results to files
         
-        runLiveSimulation();
-    end
-    
-    function resetSimulation(~, ~)
-        % Reset simulation to initial state
-        simState.isRunning = false;
-        simState.isPaused = false;
-        simState.isFinished = false;
-        simState.currentStep = 0;
+        % Check if simulation has been run
+        if isempty(simState.X_samples)
+            errordlg('No simulation data to save. Please run a simulation first.');
+            return;
+        end
         
-        % Reset sample array to initial positions
+        % Generate timestamp for unique filename
+        timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+        
+        % Get trajectory name
+        trajectoryNames = {'Circular', 'Rectangle', 'RectangleObstacles'};
+        trajectoryName = trajectoryNames{simState.trajectoryType};
+        
+        % Get model name
         if simState.isDeadReckoning
-            size_U = size(simState.U_list, 2);
-            simState.X_samples = repmat(simState.x0, 1, simState.numSamples, size_U+1);
+            modelName = 'DeadReckoning';
         else
-            size_U = size(simState.U_odom, 2);
-            simState.X_samples = repmat(simState.x0, 1, simState.numSamples, size_U+1);
+            modelName = 'Odometry';
         end
         
-        % Clear and reset plot
-        cla(ax);
-        hold(ax, 'on');
+        % Create base filename
+        baseFilename = sprintf('RobotSim_%s_%s_%s', modelName, trajectoryName, timestamp);
         
-        % Redraw occupancy map if present
-        if ~isempty(simState.occMap)
-            show(simState.occMap, 'Parent', ax);
-            hold(ax, 'on');
+        % Ask user for save location
+        [filename, pathname] = uiputfile(...
+            {'*.mat', 'MATLAB Data (*.mat)'; '*.txt', 'Text File (*.txt)'}, ...
+            'Save Simulation Results', ...
+            fullfile(pwd, baseFilename));
+        
+        if filename == 0
+            % User cancelled
+            return;
         end
         
-        % Plot only initial ground truth point
-        plot(ax, simState.X_gt(1,1), simState.X_gt(2,1), 'go', 'MarkerSize', 8, 'LineWidth', 2, 'DisplayName', 'Ground Truth');
+        % Remove extension from filename
+        [~, filenameNoExt, ~] = fileparts(filename);
         
-        trajectoryNames = {'Circular', 'Rectangle', 'Rectangle with Obstacles'};
-        modelName = 'Odometry';
-        if simState.isDeadReckoning
-            modelName = 'Dead Reckoning';
+        try
+            %% 1. Save figure as PNG
+            figureFilename = fullfile(pathname, [filenameNoExt, '.png']);
+            
+            % Temporarily hide control panel for cleaner figure export
+            % Store original visibility state
+            wasLiveSimChecked = get(chkLiveSimulation, 'Value');
+            
+            % Hide all control panel components
+            set(modelPanelComponents, 'Visible', 'off');
+            set(btnPanelModel, 'Visible', 'off');
+            set(btnPanelSensors, 'Visible', 'off');
+            set(btnPanelGNC, 'Visible', 'off');
+            
+            % Export figure
+            exportgraphics(fig, figureFilename, 'Resolution', 300);
+            
+            % Restore control panel visibility
+            set(modelPanelComponents, 'Visible', 'on');
+            set(btnPanelModel, 'Visible', 'on');
+            set(btnPanelSensors, 'Visible', 'on');
+            set(btnPanelGNC, 'Visible', 'on');
+            
+            % Restore proper visibility based on state
+            updateSliderVisibility();
+            if wasLiveSimChecked
+                set(btnStopModel, 'Visible', 'on');
+                set(btnContinueModel, 'Visible', 'on');
+                set(btnResetModel, 'Visible', 'on');
+                set(txtPaceLabel, 'Visible', 'on');
+                set(editPace, 'Visible', 'on');
+            else
+                set(btnStopModel, 'Visible', 'off');
+                set(btnContinueModel, 'Visible', 'off');
+                set(btnResetModel, 'Visible', 'off');
+                set(txtPaceLabel, 'Visible', 'off');
+                set(editPace, 'Visible', 'off');
+            end
+            
+            %% 2. Save simulation data as MAT file
+            matFilename = fullfile(pathname, [filenameNoExt, '.mat']);
+            
+            % Prepare data structure
+            simulationData = struct();
+            simulationData.X_samples = simState.X_samples;
+            simulationData.X_gt = simState.X_gt;
+            simulationData.U_list = simState.U_list;
+            simulationData.x0 = simState.x0;
+            simulationData.dt = simState.dt;
+            simulationData.alpha = simState.alpha;
+            simulationData.numSamples = simState.numSamples;
+            simulationData.modelType = modelName;
+            simulationData.trajectoryType = trajectoryName;
+            simulationData.timestamp = timestamp;
+            
+            if ~simState.isDeadReckoning
+                simulationData.U_odom = simState.U_odom;
+            end
+            
+            % Save MAT file
+            save(matFilename, 'simulationData');
+            
+            %% 3. Save configuration info as TXT file
+            txtFilename = fullfile(pathname, [filenameNoExt, '_config.txt']);
+            
+            fid = fopen(txtFilename, 'w');
+            
+            fprintf(fid, '========================================\n');
+            fprintf(fid, 'Robot Motion Model Simulation Results\n');
+            fprintf(fid, '========================================\n\n');
+            
+            fprintf(fid, 'Timestamp: %s\n\n', datestr(now));
+            
+            fprintf(fid, 'SIMULATION CONFIGURATION\n');
+            fprintf(fid, '------------------------\n');
+            fprintf(fid, 'Motion Model: %s\n', modelName);
+            fprintf(fid, 'Trajectory Type: %s\n', strrep(trajectoryName, '_', ' '));
+            fprintf(fid, 'Number of Samples: %d\n', simState.numSamples);
+            fprintf(fid, 'Time Step (dt): %.4f seconds\n', simState.dt);
+            fprintf(fid, 'Number of Control Steps: %d\n', size(simState.U_list, 2));
+            fprintf(fid, '\n');
+            
+            fprintf(fid, 'NOISE PARAMETERS (Alpha)\n');
+            fprintf(fid, '-------------------------\n');
+            if simState.isDeadReckoning
+                fprintf(fid, 'α1 (v→v noise): %.6f\n', simState.alpha(1));
+                fprintf(fid, 'α2 (ω→v noise): %.6f\n', simState.alpha(2));
+                fprintf(fid, 'α3 (v→ω noise): %.6f\n', simState.alpha(3));
+                fprintf(fid, 'α4 (ω→ω noise): %.6f\n', simState.alpha(4));
+                fprintf(fid, 'α5 (v→γ noise): %.6f\n', simState.alpha(5));
+                fprintf(fid, 'α6 (ω→γ noise): %.6f\n', simState.alpha(6));
+            else
+                fprintf(fid, 'α1 (rot→rot noise): %.6f\n', simState.alpha(1));
+                fprintf(fid, 'α2 (trans→rot noise): %.6f\n', simState.alpha(2));
+                fprintf(fid, 'α3 (trans→trans noise): %.6f\n', simState.alpha(3));
+                fprintf(fid, 'α4 (rot→trans noise): %.6f\n', simState.alpha(4));
+            end
+            fprintf(fid, '\n');
+            
+            fprintf(fid, 'INITIAL POSE\n');
+            fprintf(fid, '------------\n');
+            fprintf(fid, 'x: %.4f m\n', simState.x0(1));
+            fprintf(fid, 'y: %.4f m\n', simState.x0(2));
+            fprintf(fid, 'θ: %.4f rad (%.2f deg)\n', simState.x0(3), rad2deg(simState.x0(3)));
+            fprintf(fid, '\n');
+            
+            fprintf(fid, 'FINAL GROUND TRUTH POSE\n');
+            fprintf(fid, '-----------------------\n');
+            finalGT = simState.X_gt(:, end);
+            fprintf(fid, 'x: %.4f m\n', finalGT(1));
+            fprintf(fid, 'y: %.4f m\n', finalGT(2));
+            fprintf(fid, 'θ: %.4f rad (%.2f deg)\n', finalGT(3), rad2deg(finalGT(3)));
+            fprintf(fid, '\n');
+            
+            if simState.trajectoryType == 3
+                fprintf(fid, 'OBSTACLE INFORMATION\n');
+                fprintf(fid, '--------------------\n');
+                fprintf(fid, 'Obstacle Map: Yes\n');
+                fprintf(fid, 'Map Size: 20m x 10m\n');
+                fprintf(fid, 'Resolution: 0.5m\n');
+                fprintf(fid, 'Obstacle 1: 4x4m square at (2, 4)\n');
+                fprintf(fid, 'Obstacle 2: 4x4m square at (14, 4)\n');
+                fprintf(fid, '\n');
+            end
+            
+            fprintf(fid, 'OUTPUT FILES\n');
+            fprintf(fid, '------------\n');
+            fprintf(fid, 'Figure: %s\n', [filenameNoExt, '.png']);
+            fprintf(fid, 'Data: %s\n', [filenameNoExt, '.mat']);
+            fprintf(fid, 'Config: %s\n', [filenameNoExt, '_config.txt']);
+            fprintf(fid, '\n');
+            
+            fprintf(fid, '========================================\n');
+            fprintf(fid, 'End of Report\n');
+            fprintf(fid, '========================================\n');
+            
+            fclose(fid);
+            
+            %% Success message
+            msgbox(sprintf('Results saved successfully!\n\nFiles created:\n• %s.png\n• %s.mat\n• %s_config.txt', ...
+                   filenameNoExt, filenameNoExt, filenameNoExt), ...
+                   'Save Successful', 'help');
+            
+        catch ME
+            errordlg(sprintf('Error saving results: %s', ME.message), 'Save Error');
         end
-        title(ax, sprintf('%s Model - %s Trajectory - Reset', ...
-                         modelName, trajectoryNames{simState.trajectoryType}));
-        legend(ax, 'Location', 'best');
-        grid(ax, 'on');
-        axis(ax, 'equal');
-        
-        % Update button states
-        set(btnRunModel, 'Enable', 'on');
-        set(btnStopModel, 'Enable', 'off');
-        set(btnContinueModel, 'Enable', 'off');
-        set(btnResetModel, 'Enable', 'off');
     end
 
     %% Trajectory Generation Functions
