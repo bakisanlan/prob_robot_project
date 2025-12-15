@@ -142,7 +142,21 @@ classdef GNCCallbacks < handle
             U_list = simState.U_list;
             isDeadReckoning = simState.isDeadReckoning;
             dt = simState.dt;
-            alpha = simState.alpha;
+            
+            % Read current alpha values directly from MODEL panel sliders
+            % This ensures we use the latest values even if user changed them
+            % after running the simulation
+            if isDeadReckoning
+                alpha = zeros(6, 1);
+                for i = 1:6
+                    alpha(i) = get(modelCallbacks.handles.sliders.(sprintf('alpha%d', i)), 'Value');
+                end
+            else
+                alpha = zeros(4, 1);
+                for i = 1:4
+                    alpha(i) = get(modelCallbacks.handles.sliders.(sprintf('alpha%d', i)), 'Value');
+                end
+            end
             
             % Determine number of steps
             if isDeadReckoning
