@@ -82,7 +82,7 @@ end
 % 
 % % 2. Predict what should be visible from current state estimate
 % sensorParams.maxRange = 10;
-% sensorParams.fov = 90;
+% sensorParams.fov = deg2rad(90);
 % [z_pred, H, validLandmarks] = predictMeasurement(x_pred, allLandmarks, sensorParams);
 % 
 % % 3. Associate actual detections with predictions
